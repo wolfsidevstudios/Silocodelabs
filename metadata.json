@@ -1,0 +1,5 @@
+{
+  "name": "CodePod - Mobile Git Powerhouse",
+  "description": "A powerful, mobile-first web application designed to browse and manage GitHub repositories on tablets and phones. It features an intuitive UI, code viewing, issue tracking, and is supercharged with AI features powered by the Gemini API for code explanation and summarization.",
+  "requestFramePermissions": []
+}
