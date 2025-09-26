@@ -1,102 +1,134 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import type { Repository, FileContent } from '../types';
-import { githubService } from '../services/githubService';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import type { Repository, RepoContent } from '../types';
+import githubService from '../services/githubService';
+import { explainCode } from '../services/geminiService';
 import LoadingSpinner from './LoadingSpinner';
+import { SparklesIcon } from './icons/SparklesIcon';
 
-const SimpleSyntaxHighlighter: React.FC<{ code: string }> = ({ code }) => {
-    const highlight = (text: string) => {
-        return text
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/(const|let|var|function|import|export|from|return|if|else|async|await|new|default)/g, '<span class="text-purple-400">$1</span>')
-            .replace(/(\'|\"|\`)(.*?)(\'|\"|\`)/g, '<span class="text-green-400">$1$2$3</span>')
-            .replace(/(\/\/.*)/g, '<span class="text-gray-500">$1</span>')
-            .replace(/(\{|\}|\(|\)|\[|\])/g, '<span class="text-yellow-500">$1</span>');
-    };
+interface CodeViewerProps {
+  repo: Repository;
+}
 
-    return (
-        <pre className="text-sm overflow-x-auto"><code dangerouslySetInnerHTML={{ __html: highlight(code) }} /></pre>
-    );
-};
+const CodeViewer: React.FC<CodeViewerProps> = ({ repo }) => {
+  const [contents, setContents] = useState<RepoContent[]>([]);
+  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
+  const [explanation, setExplanation] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExplaining, setIsExplaining] = useState(false);
+  
+  const location = useLocation();
+  const basePath = `/repo/${repo.id}/code`;
+  const currentPath = location.pathname.startsWith(basePath) ? location.pathname.substring(basePath.length).replace(/^\//, '') : '';
 
-const CodeViewer: React.FC<{ repo: Repository }> = ({ repo }) => {
-  const params = useParams();
-  const navigate = useNavigate();
-  const path = params['*'] || '';
-  const [content, setContent] = useState<FileContent[] | FileContent | null>(null);
-  const [loading, setLoading] = useState(true);
+  const fetchContents = useCallback(async (path: string) => {
+    setIsLoading(true);
+    setSelectedFile(null);
+    setExplanation('');
+    const data = await githubService.getRepoContents(repo.id, path);
+    setContents(data);
+    setIsLoading(false);
+  }, [repo.id]);
 
   useEffect(() => {
-    const loadContent = async () => {
-      setLoading(true);
-      if (path.endsWith('/')) {
-        navigate(`/repo/${repo.id}/code/${path.slice(0, -1)}`, { replace: true });
-        return;
-      }
-      const isFile = repo.files.some(f => f.path === path && f.type === 'file');
-      
-      let data;
-      if (isFile) {
-        data = await githubService.getFileContent(repo.id, path);
-      } else {
-        const dirPath = path ? path : '/';
-        data = await githubService.getFiles(repo.id, path || '/');
-      }
-      setContent(data || null);
-      setLoading(false);
-    };
-    loadContent();
-  }, [path, repo.id, repo.files, navigate]);
-  
-  const breadcrumbs = ['code', ...path.split('/').filter(p => p)];
+    fetchContents(currentPath);
+  }, [currentPath, fetchContents]);
 
-  if (loading) {
-    return <div className="flex justify-center items-center h-full"><LoadingSpinner /></div>;
-  }
-  
-  const renderContent = () => {
-    if (!content) return <p>Content not found.</p>;
-
-    if (Array.isArray(content)) { // Directory view
-      return (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg">
-          {content.map(item => (
-            <Link key={item.name} to={`/repo/${repo.id}/code/${item.path}`} className="flex items-center p-3 border-b border-gray-800 last:border-b-0 hover:bg-gray-800 transition-colors">
-              <span className="mr-2">{item.type === 'dir' ? '📁' : '📄'}</span>
-              <span>{item.name}</span>
-            </Link>
-          ))}
-        </div>
-      );
-    } else { // File view
-        const fileContent = content.content || '';
-        return (
-            <div className="bg-gray-900 border border-gray-700 rounded-lg">
-                <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-                    <h3 className="font-mono">{content.name}</h3>
-                </div>
-                <div className="p-4">
-                  <SimpleSyntaxHighlighter code={fileContent} />
-                </div>
-            </div>
-        )
-    }
+  const handleFileClick = async (file: RepoContent) => {
+    setIsLoading(true);
+    setExplanation('');
+    const content = await githubService.getFileContent(repo.id, file.path);
+    setSelectedFile({ path: file.path, content });
+    setIsLoading(false);
   };
+  
+  const handleExplainCode = async () => {
+      if (!selectedFile) return;
+      setIsExplaining(true);
+      const result = await explainCode(selectedFile.content);
+      setExplanation(result);
+      setIsExplaining(false);
+  }
+
+  const renderBreadcrumbs = () => {
+    const pathParts = currentPath.split('/').filter(Boolean);
+    return (
+      <nav className="text-sm text-gray-400 mb-4 flex items-center flex-wrap">
+        <Link to={basePath} className="hover:text-blue-400">
+          {repo.name}
+        </Link>
+        {pathParts.map((part, index) => {
+          const path = pathParts.slice(0, index + 1).join('/');
+          return (
+            <React.Fragment key={path}>
+              <span className="mx-2">/</span>
+              <Link to={`${basePath}/${path}`} className="hover:text-blue-400">
+                {part}
+              </Link>
+            </React.Fragment>
+          );
+        })}
+      </nav>
+    );
+  };
+
+  if (selectedFile) {
+    return (
+      <div>
+        <button onClick={() => setSelectedFile(null)} className="text-blue-400 mb-4 text-sm">&larr; Back to files</button>
+        <div className="bg-gray-900 border border-gray-700 rounded-lg">
+          <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+            <h3 className="font-mono text-gray-200">{selectedFile.path}</h3>
+            <button onClick={handleExplainCode} disabled={isExplaining} className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-500 disabled:bg-gray-600">
+              {isExplaining ? <LoadingSpinner size="sm" /> : <SparklesIcon className="w-4 h-4" />}
+              Explain Code
+            </button>
+          </div>
+          {isExplaining && !explanation && (
+             <div className="p-4 text-center text-gray-400">Generating explanation...</div>
+          )}
+          {explanation && (
+              <div className="p-4 border-b border-gray-700 bg-gray-800">
+                <h4 className="font-semibold text-gray-200 mb-2">AI Explanation</h4>
+                <div className="prose prose-sm prose-invert text-gray-300" dangerouslySetInnerHTML={{ __html: explanation.replace(/```(\w+)?\n([\s\S]+?)```/g, (_match, _lang, code) => `<pre><code>${code}</code></pre>`).replace(/\n/g, '<br />') }} />
+              </div>
+          )}
+          <pre className="p-4 text-sm text-gray-300 overflow-x-auto">
+            <code>{selectedFile.content}</code>
+          </pre>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-        <div className="mb-4 text-sm text-gray-400">
-            {breadcrumbs.map((crumb, index) => (
-            <span key={index}>
-                <Link to={`/repo/${repo.id}/code/${breadcrumbs.slice(1, index + 1).join('/')}`} className="hover:underline hover:text-blue-500">
-                {crumb}
-                </Link>
-                {index < breadcrumbs.length - 1 && ' / '}
-            </span>
+      {renderBreadcrumbs()}
+      {isLoading ? (
+        <div className="flex justify-center pt-10"><LoadingSpinner /></div>
+      ) : (
+        <div className="bg-gray-900 border border-gray-700 rounded-lg">
+          <ul>
+            {contents.map((item, index) => (
+              <li key={item.sha} className={`${index < contents.length - 1 ? 'border-b border-gray-800' : ''}`}>
+                {item.type === 'dir' ? (
+                  <Link to={`${basePath}/${item.path}`} className="flex items-center p-3 hover:bg-gray-800">
+                    <span className="mr-3">📁</span>
+                    <span className="text-gray-200">{item.name}</span>
+                  </Link>
+                ) : (
+                  <button onClick={() => handleFileClick(item)} className="flex items-center w-full text-left p-3 hover:bg-gray-800">
+                    <span className="mr-3">📄</span>
+                    <span className="text-gray-200">{item.name}</span>
+                  </button>
+                )}
+              </li>
             ))}
+             {contents.length === 0 && <li className="p-4 text-center text-gray-500">This directory is empty.</li>}
+          </ul>
         </div>
-        {renderContent()}
+      )}
     </div>
   );
 };
