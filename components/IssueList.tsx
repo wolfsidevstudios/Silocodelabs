@@ -1,28 +1,12 @@
-
 import React, { useState } from 'react';
 import type { Issue } from '../types';
-import { summarizeText } from '../services/geminiService';
-import LoadingSpinner from './LoadingSpinner';
-import { SparklesIcon } from './icons/SparklesIcon';
 
 const IssueList: React.FC<{ issues: Issue[] }> = ({ issues }) => {
     const [expandedIssue, setExpandedIssue] = useState<number | null>(null);
-    const [aiSummary, setAiSummary] = useState<string | null>(null);
-    const [isAiLoading, setIsAiLoading] = useState(false);
 
     const toggleExpand = (issueId: number) => {
         setExpandedIssue(expandedIssue === issueId ? null : issueId);
-        setAiSummary(null); // Reset summary when toggling
     };
-    
-    const handleAiSummary = async (issue: Issue) => {
-        setIsAiLoading(true);
-        setAiSummary(null);
-        const fullText = `Title: ${issue.title}\n\nBody: ${issue.body}\n\nComments:\n${issue.comments.map(c => `- ${c.author.name}: ${c.body}`).join('\n')}`;
-        const summary = await summarizeText(fullText);
-        setAiSummary(summary);
-        setIsAiLoading(false);
-    }
 
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg">
@@ -55,15 +39,6 @@ const IssueList: React.FC<{ issues: Issue[] }> = ({ issues }) => {
                             ))}
                         </div>
                     )}
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                        <button onClick={() => handleAiSummary(issue)} className="flex items-center gap-2 px-3 py-1 bg-purple-500 text-white rounded-md text-xs hover:bg-purple-600 transition-colors disabled:opacity-50" disabled={isAiLoading}>
-                            <SparklesIcon className="w-4 h-4" /> AI Summary
-                        </button>
-                        {isAiLoading && <div className="mt-2"><LoadingSpinner/></div>}
-                        {aiSummary && (
-                             <div className="mt-4 p-3 bg-gray-800 rounded-md text-sm text-gray-300 prose prose-sm prose-invert" dangerouslySetInnerHTML={{ __html: aiSummary.replace(/\n/g, '<br/>') }} />
-                        )}
-                    </div>
                 </div>
             )}
           </li>

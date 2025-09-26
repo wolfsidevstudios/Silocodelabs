@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation, Routes, Route, useNavigate } from 'react-router-dom';
 import { githubService } from '../services/githubService';
@@ -9,20 +8,18 @@ import CodeViewer from './CodeViewer';
 import CommitList from './CommitList';
 import IssueList from './IssueList';
 import PRList from './PRList';
-import AIAssistant from './AIAssistant';
 import { CodeIcon } from './icons/CodeIcon';
 import { CommitIcon } from './icons/CommitIcon';
 import { IssueIcon } from './icons/IssueIcon';
 import { PullRequestIcon } from './icons/PullRequestIcon';
-import { SparklesIcon } from './icons/SparklesIcon';
+import { ShareIcon } from './icons/ShareIcon';
 
 const RepoDetail: React.FC = () => {
   const { repoId } = useParams<{ repoId: string }>();
   const location = useLocation();
-  const navigate = useNavigate();
   const [repo, setRepo] = useState<Repository | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAiAssistantOpen, setAiAssistantOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!repoId) return;
@@ -34,6 +31,16 @@ const RepoDetail: React.FC = () => {
     };
     fetchRepo();
   }, [repoId]);
+  
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => console.error('Failed to copy text: ', err));
+  };
+
 
   if (loading) {
     return <div className="flex justify-center items-center h-screen"><LoadingSpinner /></div>;
@@ -57,9 +64,20 @@ const RepoDetail: React.FC = () => {
     </div>
   );
 
+  const headerActions = (
+    <button 
+      onClick={handleShare}
+      className={`flex items-center gap-2 px-3 py-1.5 text-white rounded-md text-sm transition-colors ${copied ? 'bg-green-500' : 'bg-gray-700 hover:bg-gray-600'}`}
+      aria-label="Share repository URL"
+    >
+      <ShareIcon className="w-4 h-4" />
+      {copied ? 'Copied!' : 'Share'}
+    </button>
+  );
+
   return (
     <div className="h-screen flex flex-col">
-       <Layout title={title}>
+       <Layout title={title} headerActions={headerActions}>
          <div className="flex-1 flex flex-col min-h-0">
             <div className="border-b border-gray-700 px-4 mb-4">
                 <nav className="flex space-x-2 overflow-x-auto pb-2 -mb-px">
@@ -80,16 +98,6 @@ const RepoDetail: React.FC = () => {
             </div>
          </div>
       </Layout>
-      <button 
-        onClick={() => setAiAssistantOpen(true)}
-        className="fixed bottom-6 right-6 bg-purple-400 text-white p-3 rounded-full shadow-lg hover:bg-purple-500 transition-transform transform hover:scale-110 z-20">
-        <SparklesIcon className="w-6 h-6" />
-      </button>
-      <AIAssistant 
-        isOpen={isAiAssistantOpen} 
-        onClose={() => setAiAssistantOpen(false)}
-        repo={repo}
-      />
     </div>
   );
 };
